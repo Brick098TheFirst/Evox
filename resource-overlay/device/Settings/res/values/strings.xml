@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     SPDX-FileCopyrightText: The LineageOS Project
+     SPDX-License-Identifier: Apache-2.0
+-->
+<resources>
+    <!-- Shown by Evolution X Settings ("About phone" hardware info) when the
+         device has no maintainer entry in the Evolution OTA database — which
+         is always the case for unofficial builds. Evolution X Settings falls
+         back to this string; default is "Unknown". Harmless on LineageOS
+         builds, where the resource does not exist. -->
+    <string name="build_maintainer_summary" translatable="false">Jayden</string>
+</resources>

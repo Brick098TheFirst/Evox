@@ -36,6 +36,21 @@ Tablet-specific bits are preserved from the LineageOS tree
 2560×1600 boot animation, landscape-native orientation props) — this stays
 a **tablet** build, not a scaled phone build.
 
+### Device-facing options in `evolution_gts7fewifi.mk` (all verified against vendor_evolution @ bka)
+
+| Option | Value | Why |
+|---|---|---|
+| `WITH_GMS` | `true` | **GApps baked into the ROM** (`vendor/gms` via `common_full_tablet_wifionly.mk`; set `false` for a vanilla build — version gets a `-Vanilla` suffix) |
+| `EVO_BUILD_TYPE` | `Unofficial` | must be `Official`/`Unofficial`, else the vendor errors out |
+| `EVO_MAINTAINER` | `Jayden` | consumed by vendor variants that read it; the visible "Maintained by Jayden" comes from the `SettingsResDevice` overlay (`build_maintainer_summary` — EvoX Settings falls back to that string when the device isn't in the OTA DB) |
+| `TARGET_SUPPORTS_64_BIT_APPS` | `true` | EvoX's gate for Face Unlock — the T733 has no fingerprint sensor, so this is the only biometric unlock |
+| `TARGET_ENABLE_FP_OVERRIDE` | `true` (default) | Pixel fingerprint spoof for Wallet/RCS; set `false` and re-add the Samsung `PRODUCT_BUILD_PROP_OVERRIDES` for stock identity |
+| `TARGET_SCREEN_WIDTH/HEIGHT` | 2560/1600 | drives EvoX's generated bootanimation |
+
+EvoX-wide features (Evolver in Settings, blur, Quick Tap, GameSpace,
+Aperture camera, OTA updater) come from the vendor config automatically —
+no device action needed.
+
 ## Building
 
 **Easy way (no forks needed, from a checkout of this repo):**

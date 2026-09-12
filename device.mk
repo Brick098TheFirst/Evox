@@ -27,6 +27,7 @@ PRODUCT_PACKAGES += \
     FrameworksResDevice \
     Launcher3ResDevice \
     SettingsProviderResDevice \
+    SettingsResDevice \
     WifiResDevice
 
 # AAPT

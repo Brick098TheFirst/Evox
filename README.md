@@ -25,13 +25,27 @@ this repo:
   (2560/1600, already set — no extra config needed)
 - Plus the fixes: S-Pen `.idc` reclassification and the two kernel patches
 
-The rest of Evolution X (frameworks/base, Settings, SystemUI,
-`vendor/lineage`, etc.) comes from the **Evolution-X manifest** at sync
-time — that's multi-gigabyte and can't live inside a device tree repo.
-**No forks of anything are needed**: `scripts/setup-build.sh` clones all
-of it straight from the upstream repos (EvoX + LineageOS + Bush-cat),
-uses **this repo** as the device tree, and transfers the kernel patches
-onto the kernel checkout automatically.
+The rest of Evolution X (frameworks/base, Settings incl. the **Evolver**
+customization hub, SystemUI, `vendor/lineage`, etc.) comes from the
+**Evolution-X manifest** at sync time — that's multi-gigabyte and can't
+live inside a device tree repo. **No forks of anything are needed**:
+`scripts/setup-build.sh` clones all of it straight from the upstream
+repos (EvoX + LineageOS + Bush-cat), uses **this repo** as the device
+tree, and transfers the kernel patches onto the kernel checkout
+automatically.
+
+### What the build ships (device-specific choices)
+
+| Feature | State | How |
+|---|---|---|
+| **GApps** | ✅ built in | `WITH_GMS := true` (EvoX default; `vendor/gms` from the EvoX manifest). `WITH_GMS := false` → vanilla build |
+| **Evolver** | ✅ automatic | part of Evolution X Settings (from the EvoX manifest) |
+| **"Maintained by Jayden"** | ✅ | `SettingsResDevice` RRO overrides `build_maintainer_summary` in EvoX Settings' About page; `EVO_MAINTAINER := Jayden` for vendor trees that read it |
+| **Face unlock** | ✅ enabled | `TARGET_SUPPORTS_64_BIT_APPS := true` (EvoX gate) — the T733 has **no fingerprint sensor**, so camera face unlock is the only biometric |
+| **Blur / Quick Tap / Aperture camera / GameSpace etc.** | ✅ EvoX defaults | `TARGET_ENABLE_BLUR` defaults on; camera (Aperture) and the EvoX app set come with the vendor config |
+| **Fingerprint spoof** | ✅ EvoX default (Pixel) | `TARGET_ENABLE_FP_OVERRIDE := true` for Wallet/RCS; flip to `false` + the Samsung overrides if you prefer stock identity |
+| **Build type** | `Unofficial` | `EVO_BUILD_TYPE` (must be Official/Unofficial) |
+| **S-Pen fix** | ✅ | `.idc` → `stylus` + kernel patches (see below) |
 
 ## One-command build
 
