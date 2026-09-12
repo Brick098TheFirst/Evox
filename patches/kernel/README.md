@@ -16,17 +16,26 @@ verified to `git apply --check` cleanly against that branch's HEAD.
 
 ## Applying
 
+The build setup script applies these automatically after `repo sync`:
+
+```bash
+./scripts/setup-build.sh              # full build, patches included
+./scripts/setup-build.sh --patches-only   # just (re-)apply the patches
+```
+
+By hand:
+
 ```bash
 git clone https://github.com/Bush-cat/android_kernel_samsung_sm7325 -b lineage-22.1-gts7fewifi
 cd android_kernel_samsung_sm7325
 git am /path/to/Evox/patches/kernel/0001-*.patch /path/to/Evox/patches/kernel/0002-*.patch
 # or, without commit metadata:
-# git apply patches/kernel/*.patch
+# git apply 0001-*.patch 0002-*.patch
 ```
 
 Then build the kernel as part of the ROM (the device tree builds it from
-source; no prebuilt kernel is used) — see `docs/local_manifests/` to pin the
-kernel repo/branch in your build tree.
+source; no prebuilt kernel is used) — see `docs/local_manifests/gts7fewifi.xml`
+to pin the kernel repo/branch in your build tree.
 
 ## On-device verification (after flashing)
 

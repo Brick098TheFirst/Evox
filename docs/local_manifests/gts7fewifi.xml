@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gts7fewifi local manifest — works for BOTH:
+   - Evolution X  (repo init -u https://github.com/Evolution-X/manifest -b bka)
+   - LineageOS 23 (repo init -u https://github.com/LineageOS/android -b lineage-23.2)
+
+  Everything the device needs is pinned here, so roomservice never has to
+  guess an org/branch. No forks are required anywhere: this very repo
+  (Brick098TheFirst/Evox, branch arena/01a09644-evox) is used as the device
+  tree — it already carries the Evolution X product (evolution_gts7fewifi.mk)
+  and the S-Pen .idc fix. The kernel patches in patches/kernel/ are applied
+  on top of the kernel after sync (scripts/setup-build.sh does this for you;
+  see README.md).
+
+  Why each pin:
+   - kernel: Bush-cat lineage-22.1-gts7fewifi — the ONLY public branch with
+     vendor/lineage-gts7fewifi_defconfig (required by BoardConfig.mk) and the
+     wacom/w90xx + focaltech ft820x drivers.
+   - device/samsung/gts7fewifi: this fork (evolution product config + fixes).
+     Change DEVICE_BRANCH when you merge this work to another branch.
+   - sm7325-common + hardware/samsung + hardware/samsung_slsi/nfc: LineageOS
+     (resolved from lineage.dependencies; pinned here to be deterministic).
+   - vendor blobs: Bush-cat (gts7fewifi @ lineage-23.2-temp — note the
+     default branch of that repo is the older lineage-22.1, don't be fooled).
+-->
+<manifest>
+  <remote name="bushcat" fetch="https://github.com/Bush-cat" />
+  <remote name="lineage" fetch="https://github.com/LineageOS" />
+  <remote name="brick"   fetch="https://github.com/Brick098TheFirst" />
+
+  <!-- This repo = the device tree (Evolution X product + S-Pen fixes) -->
+  <project path="device/samsung/gts7fewifi"
+           name="Evox"
+           remote="brick"
+           revision="refs/heads/arena/01a09644-evox" />
+
+  <!-- Common device tree -->
+  <project path="device/samsung/sm7325-common"
+           name="android_device_samsung_sm7325-common"
+           remote="lineage"
+           revision="refs/heads/lineage-23.2" />
+
+  <!-- Kernel (only public branch that can build this device) -->
+  <project path="kernel/samsung/sm7325"
+           name="android_kernel_samsung_sm7325"
+           remote="bushcat"
+           revision="refs/heads/lineage-22.1-gts7fewifi" />
+
+  <!-- Samsung hardware bits (from lineage.dependencies, pinned) -->
+  <project path="hardware/samsung"
+           name="android_hardware_samsung"
+           remote="lineage"
+           revision="refs/heads/lineage-23.2" />
+
+  <project path="hardware/samsung_slsi/nfc"
+           name="android_hardware_samsung_slsi_nfc"
+           remote="lineage"
+           revision="refs/heads/lineage-23.2" />
+
+  <!-- Vendor blobs -->
+  <project path="vendor/samsung/gts7fewifi"
+           name="proprietary_vendor_samsung_gts7fewifi"
+           remote="bushcat"
+           revision="refs/heads/lineage-23.2-temp" />
+
+  <project path="vendor/samsung/sm7325-common"
+           name="proprietary_vendor_samsung_sm7325-common"
+           remote="bushcat"
+           revision="refs/heads/lineage-23.2" />
+</manifest>

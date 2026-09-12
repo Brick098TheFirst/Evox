@@ -26,7 +26,8 @@
 |---|---|
 | Evolution X product makefile (`evolution_gts7fewifi`), tablet Wi-Fi-only config, registered in lunch | `evolution_gts7fewifi.mk`, `AndroidProducts.mk` |
 | Correct EvoX vendor inherit (`vendor/lineage/config/common_full_tablet_wifionly.mk` — EvoX syncs `vendor_evolution` to `vendor/lineage`) | `evolution_gts7fewifi.mk` |
-| Pinned local manifest for the EvoX bka source tree | `docs/local_manifests/evolution-bka-gts7fewifi.xml` |
+| One pinned local manifest that works for both EvoX bka and LOS 23.2 (device tree = this repo) | `docs/local_manifests/gts7fewifi.xml` |
+| One-shot setup script (clone everything, apply kernel patches, build) | `scripts/setup-build.sh` |
 | S-Pen/touch fix (the reason this fork exists) | `patches/kernel/*.patch`, `configs/idc/sec_e-pen.idc`, `docs/stylus-touch-bug-analysis.md` |
 
 Tablet-specific bits are preserved from the LineageOS tree
@@ -37,40 +38,45 @@ a **tablet** build, not a scaled phone build.
 
 ## Building
 
+**Easy way (no forks needed, from a checkout of this repo):**
+
 ```bash
-# 1. Sync Evolution X (bka = Android 16)
-mkdir evox && cd evox
+./scripts/setup-build.sh    # EvoX bka; add --sync-only to skip the build
+```
+
+The script clones everything from upstream (Evolution-X manifest bka +
+this repo as device tree + pinned kernel/common/hardware/vendor), applies
+`patches/kernel/*.patch` to the kernel via `git am` (idempotent; falls
+back to `git apply`), and builds `evolution_gts7fewifi-userdebug`.
+
+**Manual way (same thing by hand):**
+
+```bash
 repo init -u https://github.com/Evolution-X/manifest -b bka --git-lfs
-
-# 2. Add the device pins
 mkdir -p .repo/local_manifests
-cp /path/to/Evox/docs/local_manifests/evolution-bka-gts7fewifi.xml \
-   .repo/local_manifests/gts7fewifi.xml
-
-# 3. (Optional but recommended) use your kernel fork with the S-Pen patches
-#    applied instead of Bush-cat's branch:
-#    edit the kernel/samsung/sm7325 <project> entry in the file above.
-
-repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-
-# 4. Build
+cp /path/to/Evox/docs/local_manifests/gts7fewifi.xml .repo/local_manifests/
+repo sync -c -j$(nproc)
+(cd kernel/samsung/sm7325 && git am /path/to/Evox/patches/kernel/*.patch)
 . build/envsetup.sh
-lunch evolution_gts7fewifi-bp4a-userdebug   # tab-completion also offers plain -userdebug
+lunch evolution_gts7fewifi-userdebug
 m evolution
 ```
 
 Notes:
 
-- The first `lunch` may pull `device/samsung/sm7325-common` +
-  `hardware/samsung` etc. via roomservice (`lineage.dependencies`) — that's
-  expected. If roomservice also adds its own `kernel/samsung/sm7325`
-  entry, delete that duplicate from
-  `.repo/local_manifests/roomservice.xml` and re-sync; the pinned
-  `lineage-22.1-gts7fewifi` kernel is the one that must win (it's the only
-  branch with `vendor/lineage-gts7fewifi_defconfig`).
+- The local manifest pins **every** device-side repo (device tree = this
+  fork, common tree, kernel, hardware/samsung, hardware/samsung_slsi/nfc,
+  both vendor blob repos), so roomservice has nothing left to fetch and
+  can never pull the wrong kernel branch. `lineage-22.1-gts7fewifi` is the
+  only branch with `vendor/lineage-gts7fewifi_defconfig`.
 - `TARGET_KERNEL_SOURCE`/`TARGET_KERNEL_CONFIG` come from
   `sm7325-common/BoardConfigCommon.mk` + our `BoardConfig.mk`; the kernel
   is built from source as part of the ROM.
+- If you merge this work into another branch of your fork, set
+  `DEVICE_BRANCH=<branch>` for the script (or edit the manifest's
+  `device/samsung/gts7fewifi` revision).
+- After a later `repo sync`, re-apply the kernel patches if the sync
+  rebased them away: `./scripts/setup-build.sh --patches-only`.
 - Signing/OTA: unofficial builds are signed with the test keys by default;
   set up your own release keys before distributing.
 

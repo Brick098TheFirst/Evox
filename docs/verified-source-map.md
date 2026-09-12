@@ -46,23 +46,28 @@ GitHub API) during this session. "MISS" = repo does not exist (404).
 | `ssch71/android_kernel_samsung_gts7fewifi_SM7325`, `qaz6750/android_kernel_samsung_gts7fewifi` @ `android16-5.4.y` | stock-derived mirrors; their focaltech drivers also have **no** TSP-blocking notifier handler |
 | Samsung OSS portal (`opensource.samsung.com`) | down during analysis ("We're doing some work on site") — the definitive stock T733 kernel drop could not be pulled |
 
-## Forks needed on `Brick098TheFirst` (not yet created)
+## No forks needed — the build is fully self-contained via this repo
 
-Currently only `Brick098TheFirst/Evox` (this repo) exists. For
-self-contained builds + the kernel patches, fork:
+`scripts/setup-build.sh` + `docs/local_manifests/gts7fewifi.xml` pull
+everything directly from the upstream repos at build time:
 
-```bash
-gh repo fork Bush-cat/android_kernel_samsung_sm7325 --clone=false   # push patches/kernel/* to a branch (e.g. lineage-23.2-evox)
-gh repo fork Bush-cat/android_device_samsung_gts7fewifi --clone=false
-gh repo fork Bush-cat/proprietary_vendor_samsung_gts7fewifi --clone=false
-gh repo fork Bush-cat/proprietary_vendor_samsung_sm7325-common --clone=false
-```
+- Evolution-X / LineageOS source (from the org manifests)
+- device tree: **this repo** (`Brick098TheFirst/Evox` @ `arena/01a09644-evox`)
+- kernel: Bush-cat @ `lineage-22.1-gts7fewifi`, with
+  `patches/kernel/*.patch` auto-applied by the script (`git am`, or
+  `git apply` fallback if no git identity is configured)
+- common device tree + Samsung hardware repos: LineageOS @ `lineage-23.2`
+- vendor blobs: Bush-cat's two vendor repos
 
-Keep all existing license headers (Apache-2.0 for device/vendor trees,
-GPL-2.0 for the kernel) — the patches in `patches/kernel/` do.
+Why the kernel/vendor sources aren't vendored *into* this repo: they're
+multi-gigabyte git repositories that the `repo` tool must sync and track
+(the full build tree is ~50-100 GB); a device tree repo only carries
+makefiles/configs/patches. Transferring the files at build time via the
+script achieves the same "everything in one place" effect while staying
+in sync with upstream.
 
-Note: this workspace's GitHub session is a bot account with push access to
-`Brick098TheFirst/Evox` only, so the forks above must be created from your
-own account (one `gh repo fork` each, or the GitHub UI). After forking the
-kernel, apply `patches/kernel/*.patch` on a new branch and point the local
-manifest's kernel entry at your fork.
+If you later want kernel changes upstreamed or standing builds, you can
+fork `Bush-cat/android_kernel_samsung_sm7325`, push the patches to a
+branch there, and point the manifest's `kernel/samsung/sm7325` entry at
+it — but it is not required to build or test. All license headers are
+preserved (Apache-2.0 device/vendor trees, GPL-2.0 kernel).
