@@ -1,6 +1,7 @@
 # S-Pen (Wacom EMR digitizer, input device name "sec_e-pen")
 #
-# EXPERIMENT for the pen/palm/touch bug, see docs/stylus-touch-bug-analysis.md
+# Userspace half of the pen/palm/touch fix — see
+# docs/stylus-touch-bug-analysis.md (kernel half: patches/kernel/0001-*).
 #
 # LineageOS/Evolution X shipped this as `touch.deviceType = touchScreen`
 # ("gets rid of the pen pointer, while retaining pen-specific functionality"

@@ -5,6 +5,5 @@
 
 runtime_resource_overlay {
     name: "SettingsResDevice",
-    theme: "SettingsResDevice",
     product_specific: true,
 }
