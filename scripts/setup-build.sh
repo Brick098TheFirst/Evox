@@ -51,7 +51,13 @@ esac
 WORKDIR="${WORKDIR:-$HOME/gts7fewifi-$ROM}"
 VARIANT="${VARIANT:-userdebug}"
 DEVICE_BRANCH="${DEVICE_BRANCH:-arena/01a09644-evox}"
+
+# Track whether the user set JOBS before applying the default, so the
+# low-RAM clamp (further below, after warn() is defined) never
+# overrides an explicit choice.
+JOBS_EXPLICIT="${JOBS:+set}"
 JOBS="${JOBS:-$(nproc)}"
+TOTAL_RAM_KB="${TOTAL_RAM_KB:-$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 999999)}"
 KERNEL_DIR="$WORKDIR/kernel/samsung/sm7325"
 LOCAL_MANIFEST_SRC="$REPO_ROOT/docs/local_manifests/gts7fewifi.xml"
 LOCAL_MANIFEST_DST="$WORKDIR/.repo/local_manifests/gts7fewifi.xml"
@@ -60,6 +66,15 @@ PATCHES=( "$REPO_ROOT"/patches/kernel/*.patch )
 log()  { printf '\033[1;32m>>>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m>>> WARNING:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m>>> ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# Full Android builds need roughly 2-2.5 GB RAM per parallel job. On
+# low-RAM machines (e.g. 16 GB), cap the default parallelism so the
+# linker doesn't get OOM-killed. Force a different value with JOBS=n,
+# or fake the RAM detection with TOTAL_RAM_KB=nnnn (in kB).
+if [ -z "$JOBS_EXPLICIT" ] && [ "${TOTAL_RAM_KB}" -lt 25165824 ] && [ "$JOBS" -gt 6 ]; then
+    warn "Low RAM ($((TOTAL_RAM_KB / 1024)) MB): capping parallel jobs from $JOBS to 6 (override with JOBS=n; add swap if a job gets OOM-killed)"
+    JOBS=6
+fi
 
 # ---------------------------------------------------------------- checks ---
 command -v git     >/dev/null || die "git not found — install it first"
@@ -159,9 +174,9 @@ case "$ROM" in
     lineage) TARGET="lineage_gts7fewifi";   BUILD_TARGET="bacon" ;;
 esac
 
-log "Building $TARGET-$VARIANT"
+log "Building $TARGET-$VARIANT (-j$JOBS)"
 # envsetup/lunch are not 'set -u' clean
 set +u
 source build/envsetup.sh
 lunch "$TARGET-$VARIANT"
-m "$BUILD_TARGET"
+m -j"$JOBS" "$BUILD_TARGET"
