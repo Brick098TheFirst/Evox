@@ -131,18 +131,24 @@ maintainer / stock drop is listed as an open question in
 
 ### 6.2 Kernel fix (patches/kernel/, applies to `lineage-22.1-gts7fewifi`)
 
-`0001`: focaltech ft820x registers a `sec_input` notifier:
+`0001`: focaltech ft820x registers a `sec_input` notifier and tracks
+two blocking sources independently; touch scanning is paused while
+either is active, using `fts_set_scan_off()` (writes
+`FTS_REG_POWER_MODE = 0x04 SCAN_OFF` — the driver's existing,
+cover-mode-proven primitive; touch scan paused, display unaffected
+since this is a TDDI):
 
-- `NOTIFIER_TSP_BLOCKING_REQUEST` → `fts_set_scan_off(true)` (writes
-  `FTS_REG_POWER_MODE = 0x04 SCAN_OFF`, the driver's existing,
-  cover-mode-proven primitive — touch scan paused, display unaffected
-  since this is a TDDI);
-- `NOTIFIER_TSP_BLOCKING_RELEASE` → `fts_set_scan_off(false)` (back to
-  `0x00` active);
-- hover in/out are logged (no action yet), so we can decide after
-  on-device logs whether hover should also gate scanning;
+- **(a) TSP_STOP handshake** (the stock Samsung mechanism):
+  `NOTIFIER_TSP_BLOCKING_REQUEST` → block, `RELEASE` → unblock;
+- **(b) hover gating** (safety net): `NOTIFIER_WACOM_PEN_HOVER_IN`
+  blocks, `HOVER_OUT` unblocks — so even if the Wacom IC on a given
+  unit never emits TSP_STOP packets, scanning is still paused while
+  the pen is in proximity. Toggleable at runtime via
+  `/sys/module/focaltech_ts_ft820x/parameters/pen_hover_gating`
+  (default on; or `focaltech_ts_ft820x.pen_hover_gating=0` on the
+  cmdline). The TSP_STOP path is always on;
 - block requests are ignored while suspended or during firmware
-  upgrade, and resume force-releases a still-held block so scan can
+  upgrade, and resume force-releases any still-held block so scan can
   never stay off across suspend/resume;
 - the handler is defined before `fts_ts_probe_entry()` (declaration
   order matters — the first version of this patch had it after probe
@@ -161,8 +167,9 @@ focaltech handler's own logs.
   `lineage-22.1-gts7fewifi` HEAD (`d23fb02`);
 - ✅ the added handler code was extracted verbatim and compiled with
   gcc `-Wall -Wextra -Werror` in a stub harness, and the full state
-  machine (request/release/duplicates/suspended/fw-upgrade/resume) was
-  executed and behaved correctly;
+  machine was executed across 6 scenarios — hover+TSP_STOP overlap,
+  hover-only, runtime gating toggle, duplicate events, suspended/
+  fw-upgrade guards, and resume force-release — all behaving correctly;
 - ✅ declaration order (handler before first use in probe) verified in
   the patched source;
 - ❌ NOT compiled inside the actual kernel tree (needs the full
@@ -170,13 +177,15 @@ focaltech handler's own logs.
   will confirm;
 - ❌ NOT tested on hardware — that's the on-device test plan below.
 
-### 6.3 If logs show the Wacom IC never sends TSP_STOP packets on this unit
+### 6.3 If the Wacom IC never sends TSP_STOP packets on this unit
 
-Then hover-gating is the fallback: make the focaltech handler also call
-`fts_set_scan_off(true)` on `NOTIFIER_WACOM_PEN_HOVER_IN` and `…(false)`
-on `NOTIFIER_WACOM_PEN_HOVER_OUT`. That changes behaviour slightly (scan
-off during hover, not just pen contact), but is still exactly the sec_ts /
-stm pattern. One-line change in the patched handler.
+Already covered: hover gating (source b above) pauses scanning on pen
+proximity regardless of TSP_STOP packets. If you prefer the pen NOT to
+suppress touch while merely hovering (stock-like behaviour), disable it:
+
+```bash
+adb shell su -c 'echo N > /sys/module/focaltech_ts_ft820x/parameters/pen_hover_gating'
+```
 
 ### 6.4 Optional hardening (not in the patches yet)
 

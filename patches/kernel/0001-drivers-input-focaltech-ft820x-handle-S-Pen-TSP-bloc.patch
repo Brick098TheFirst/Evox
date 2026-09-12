@@ -1,6 +1,6 @@
-From 7d782723deadd5e831c6a9f0d2b505e9458324a1 Mon Sep 17 00:00:00 2001
+From f36df9eb84c1502786011227febe133f6ab9663d Mon Sep 17 00:00:00 2001
 From: Brick098TheFirst <brick098thefirst@users.noreply.github.com>
-Date: Sat, 12 Sep 2026 16:27:51 +0000
+Date: Sat, 12 Sep 2026 16:40:50 +0000
 Subject: [PATCH 1/2] drivers: input: focaltech: ft820x: handle S-Pen TSP
  blocking notifications
 
@@ -22,32 +22,70 @@ SCAN_OFF 0x04 / active 0x00), the same primitive already used for cover
 mode. This mirrors what the sec_ts driver does on the Tab S7 (sm8250)
 and what stm_core.c does for the pogo touchpad.
 
-Details:
- - the handler is defined before fts_ts_probe_entry() so the
-   registration in probe can reference it (no forward declaration
-   needed);
+Two blocking sources are tracked independently and touch scanning is
+paused while either is active:
+ - TSP_STOP-driven: NOTIFIER_TSP_BLOCKING_REQUEST/RELEASE from the
+   Wacom IC's TSP_STOP packets (the stock Samsung handshake), and
+ - hover-driven: NOTIFIER_WACOM_PEN_HOVER_IN/OUT gate scanning whenever
+   the pen is in proximity, as a safety net for units whose Wacom IC
+   does not emit TSP_STOP packets. Can be disabled at runtime via
+   /sys/module/focaltech_ts_ft820x/parameters/pen_hover_gating or the
+   focaltech_ts_ft820x.pen_hover_gating=0 kernel cmdline.
+
+Additional details:
  - block requests are ignored while suspended or while firmware
    upgrade is in progress;
- - resume force-releases a still-held block so scan can never stay
+ - the handler is defined before fts_ts_probe_entry() so the
+   registration in probe can reference it;
+ - resume force-releases any still-held block so scan can never stay
    off across a suspend/resume cycle;
- - hover in/out events are logged for now so the pen/touch interaction
-   can be observed in dmesg before further behaviour is wired up.
+ - everything is guarded by
+   #if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER) like the rest of the tree.
 
 Signed-off-by: Brick098TheFirst <brick098thefirst@users.noreply.github.com>
 ---
- .../focaltech/ft820x/focaltech_core.c         | 62 +++++++++++++++++++
- .../focaltech/ft820x/focaltech_core.h         |  4 ++
- 2 files changed, 66 insertions(+)
+ .../focaltech/ft820x/focaltech_core.c         | 101 ++++++++++++++++++
+ .../focaltech/ft820x/focaltech_core.h         |   5 +
+ 2 files changed, 106 insertions(+)
 
 diff --git a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c
-index 75dd3e3..8348632 100644
+index 75dd3e3..74484bd 100644
 --- a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c
 +++ b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c
-@@ -1827,6 +1827,50 @@ int fts_vbus_notification(struct notifier_block *nb,
+@@ -1827,6 +1827,87 @@ int fts_vbus_notification(struct notifier_block *nb,
  }
  #endif
  
 +#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
++/*
++ * S-Pen (Wacom EMR) / capacitive touch coexistence.
++ *
++ * The Wacom driver tells us through the sec_input notifier chain when
++ * the digitizer wants the capacitive controller to stop scanning:
++ *  - NOTIFIER_TSP_BLOCKING_REQUEST/RELEASE mirror the TSP_STOP packets
++ *    the Wacom IC sends while pen and touch would interfere, and
++ *  - NOTIFIER_WACOM_PEN_HOVER_IN/OUT fire on pen proximity transitions.
++ *
++ * Both sources are tracked separately and touch scanning is paused while
++ * either is active, using the same FTS_REG_POWER_MODE scan-off primitive
++ * that cover mode uses. Hover gating can be disabled at runtime:
++ *   /sys/module/focaltech_ts_ft820x/parameters/pen_hover_gating
++ * or on the kernel cmdline with focaltech_ts_ft820x.pen_hover_gating=0
++ */
++static bool pen_hover_gating = true;
++module_param_named(pen_hover_gating, pen_hover_gating, bool, 0644);
++MODULE_PARM_DESC(pen_hover_gating, "pause touch scan while S-Pen hovers");
++
++static void fts_tsp_scan_update(struct fts_ts_data *ts_data)
++{
++	bool blocked = ts_data->tsp_block_cmd || ts_data->tsp_block_hover;
++
++	fts_set_scan_off(blocked);
++	FTS_INFO("tsp scan %s (cmd:%d hover:%d)",
++			blocked ? "blocked" : "resumed",
++			ts_data->tsp_block_cmd, ts_data->tsp_block_hover);
++}
++
 +static int fts_sec_touch_notify_call(struct notifier_block *nb,
 +		unsigned long data, void *v)
 +{
@@ -56,32 +94,40 @@ index 75dd3e3..8348632 100644
 +
 +	switch (data) {
 +	case NOTIFIER_TSP_BLOCKING_REQUEST:
-+		if (ts_data->tsp_blocked) {
-+			FTS_INFO("tsp block already requested, skip");
++		if (ts_data->tsp_block_cmd) {
++			FTS_INFO("tsp block (cmd) already requested, skip");
 +			break;
 +		}
 +		if (ts_data->suspended || ts_data->fw_loading) {
 +			FTS_INFO("tsp block requested while suspended/fw-loading, skip");
 +			break;
 +		}
-+		fts_set_scan_off(true);
-+		ts_data->tsp_blocked = true;
-+		FTS_INFO("S-Pen in range: TSP scan blocked");
++		ts_data->tsp_block_cmd = true;
++		fts_tsp_scan_update(ts_data);
 +		break;
 +	case NOTIFIER_TSP_BLOCKING_RELEASE:
-+		if (!ts_data->tsp_blocked) {
-+			FTS_INFO("tsp block not held, skip release");
++		if (!ts_data->tsp_block_cmd) {
++			FTS_INFO("tsp block (cmd) not held, skip release");
 +			break;
 +		}
-+		fts_set_scan_off(false);
-+		ts_data->tsp_blocked = false;
-+		FTS_INFO("S-Pen out of range: TSP scan released");
++		ts_data->tsp_block_cmd = false;
++		fts_tsp_scan_update(ts_data);
 +		break;
 +	case NOTIFIER_WACOM_PEN_HOVER_IN:
-+		FTS_INFO("S-Pen hover in");
++		FTS_INFO("S-Pen hover in (gating %s)",
++				pen_hover_gating ? "on" : "off");
++		if (pen_hover_gating && !ts_data->tsp_block_hover &&
++		    !ts_data->suspended && !ts_data->fw_loading) {
++			ts_data->tsp_block_hover = true;
++			fts_tsp_scan_update(ts_data);
++		}
 +		break;
 +	case NOTIFIER_WACOM_PEN_HOVER_OUT:
 +		FTS_INFO("S-Pen hover out");
++		if (ts_data->tsp_block_hover) {
++			ts_data->tsp_block_hover = false;
++			fts_tsp_scan_update(ts_data);
++		}
 +		break;
 +	default:
 +		break;
@@ -94,12 +140,13 @@ index 75dd3e3..8348632 100644
  static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
  {
  	int ret = 0;
-@@ -1974,6 +2018,12 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
+@@ -1974,6 +2055,13 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
  		goto err_cmd_init;
  	}
  
 +#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
-+	ts_data->tsp_blocked = false;
++	ts_data->tsp_block_cmd = false;
++	ts_data->tsp_block_hover = false;
 +	sec_input_register_notify(&ts_data->sec_input_nb,
 +			fts_sec_touch_notify_call, 1);
 +#endif
@@ -107,7 +154,7 @@ index 75dd3e3..8348632 100644
  #if IS_ENABLED(CONFIG_VBUS_NOTIFIER)
  	if (ts_data->pdata->enable_vbus_notifier)
  		vbus_notifier_register(&ts_data->vbus_nb, fts_vbus_notification,
-@@ -2049,6 +2099,10 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
+@@ -2049,6 +2137,10 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
  
  	fts_sec_cmd_exit(ts_data);
  
@@ -118,15 +165,16 @@ index 75dd3e3..8348632 100644
  #if !IS_ENABLED(CONFIG_SAMSUNG_PRODUCT_SHIP)
  	fts_release_apk_debug_channel(ts_data);
  	fts_remove_sysfs(ts_data);
-@@ -2205,6 +2259,14 @@ static int fts_ts_resume(struct device *dev)
+@@ -2205,6 +2297,15 @@ static int fts_ts_resume(struct device *dev)
  	fts_wait_tp_to_valid();
  	fts_ex_mode_recovery(ts_data);
  
 +#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
-+	if (ts_data->tsp_blocked) {
++	if (ts_data->tsp_block_cmd || ts_data->tsp_block_hover) {
 +		FTS_INFO("releasing TSP block after resume");
++		ts_data->tsp_block_cmd = false;
++		ts_data->tsp_block_hover = false;
 +		fts_set_scan_off(false);
-+		ts_data->tsp_blocked = false;
 +	}
 +#endif
 +
@@ -134,16 +182,17 @@ index 75dd3e3..8348632 100644
  	fts_esdcheck_resume();
  #endif
 diff --git a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h
-index 4706624..ffb3bd6 100644
+index 4706624..2315581 100644
 --- a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h
 +++ b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h
-@@ -242,6 +242,10 @@ struct fts_ts_data {
+@@ -242,6 +242,11 @@ struct fts_ts_data {
  	bool power_disabled;
  	bool glove_mode;
  	bool cover_mode;
 +#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
 +	struct notifier_block sec_input_nb;
-+	bool tsp_blocked;         /* TSP scan blocked while S-Pen (EMR) is in range */
++	bool tsp_block_cmd;      /* scan blocked: Wacom IC TSP_STOP request */
++	bool tsp_block_hover;    /* scan blocked: S-Pen hover proximity gate */
 +#endif
  	bool charger_mode;
  	bool gesture_mode;      /* gesture enable or disable, default: disable */

@@ -1,6 +1,6 @@
-From 610703dc1b5f6200d6c9908e0ea9eda0fd8cbfee Mon Sep 17 00:00:00 2001
+From 5063eede94648b15ccdde9af4d62b5f9cf97ea09 Mon Sep 17 00:00:00 2001
 From: Brick098TheFirst <brick098thefirst@users.noreply.github.com>
-Date: Sat, 12 Sep 2026 16:27:51 +0000
+Date: Sat, 12 Sep 2026 16:40:50 +0000
 Subject: [PATCH 2/2] drivers: input: wacom: log TSP blocking notification
  results
 

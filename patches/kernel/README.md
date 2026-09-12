@@ -10,8 +10,24 @@ himax hx831xx, pogo keyboard, battery, panel drivers). Both patches were verifie
 
 | Patch | What it does |
 |---|---|
-| `0001-…focaltech…` | Makes the FT8203 touchscreen driver consume Samsung's `sec_input` pen notifications: TSP scan is paused (`FTS_REG_POWER_MODE = SCAN_OFF`) while the S-Pen is in range and resumed when it leaves. Block requests are skipped while suspended/fw-upgrading; resume force-releases a held block. This is the kernel-side fix for the palm/touch bugs. |
+| `0001-…focaltech…` | Makes the FT8203 touchscreen driver consume Samsung's `sec_input` pen notifications. Two blocking sources are tracked independently and touch scanning is paused while either is active: (a) the Wacom IC's TSP_STOP packets (`NOTIFIER_TSP_BLOCKING_REQUEST/RELEASE` — the stock Samsung handshake), and (b) pen hover proximity (`NOTIFIER_WACOM_PEN_HOVER_IN/OUT`) as a safety net for units whose IC doesn't emit TSP_STOP packets. Hover gating can be toggled at runtime. Block requests are skipped while suspended/fw-upgrading; resume force-releases held blocks. |
 | `0002-…wacom…` | Debug only: logs the result of the wacom driver's `NOTIFIER_TSP_BLOCKING_REQUEST/RELEASE` notifications in dmesg so you can see whether anyone consumed them. |
+
+## Runtime toggles (patch 0001)
+
+Hover gating is on by default and can be controlled without reflashing:
+
+```bash
+# disable (pen proximity no longer pauses touch scanning)
+adb shell su -c 'echo N > /sys/module/focaltech_ts_ft820x/parameters/pen_hover_gating'
+# re-enable
+adb shell su -c 'echo Y > /sys/module/focaltech_ts_ft820x/parameters/pen_hover_gating'
+# check current value
+adb shell su -c 'cat /sys/module/focaltech_ts_ft820x/parameters/pen_hover_gating'
+```
+
+Or permanently via kernel cmdline: `focaltech_ts_ft820x.pen_hover_gating=0`.
+The TSP_STOP handshake (a) is always active and not toggleable.
 
 ## Applying
 
@@ -49,9 +65,11 @@ What you should see with both patches applied:
 
 ```
 sec_e-pen …: [HI] x:… y:…                 <- pen enters range (wacom)
-… [FTS_TS/I]fts_sec_touch_notify_call: S-Pen hover in
-… [FTS_TS/I]fts_sec_touch_notify_call: S-Pen in range: TSP scan blocked   <- only if the IC sends a TSP_STOP packet
+… [FTS_TS/I]fts_sec_touch_notify_call: S-Pen hover in (gating on)
+… [FTS_TS/I]fts_tsp_scan_update: tsp scan blocked (cmd:0 hover:1)
+… [FTS_TS/I]fts_tsp_scan_update: tsp scan blocked (cmd:1 hover:1)  <- only if the IC also sends a TSP_STOP packet
 … [FTS_TS/I]fts_sec_touch_notify_call: S-Pen hover out
+… [FTS_TS/I]fts_tsp_scan_update: tsp scan resumed (cmd:0 hover:0)  <- or still blocked if cmd is held
 sec_e-pen …: [HO] …                       <- pen leaves range
 ```
 
