@@ -141,13 +141,34 @@ maintainer / stock drop is listed as an open question in
   `0x00` active);
 - hover in/out are logged (no action yet), so we can decide after
   on-device logs whether hover should also gate scanning;
-- stale state is cleared on resume, and everything is guarded by
-  `#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)` like the rest of the tree.
+- block requests are ignored while suspended or during firmware
+  upgrade, and resume force-releases a still-held block so scan can
+  never stay off across suspend/resume;
+- the handler is defined before `fts_ts_probe_entry()` (declaration
+  order matters — the first version of this patch had it after probe
+  and would not have compiled);
+- everything is guarded by `#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)`
+  like the rest of the tree.
 
 `0002`: wacom logs the `sec_input_notify()` return values in
 `wac_i2c_block_tsp_scan()` — before the fix you can *see*
 `ret=0` (`NOTIFY_DONE` = nobody handled it), after the fix you see the
 focaltech handler's own logs.
+
+**Verification status of the patches** (what was and wasn't tested):
+
+- ✅ `git apply --check` clean against
+  `lineage-22.1-gts7fewifi` HEAD (`d23fb02`);
+- ✅ the added handler code was extracted verbatim and compiled with
+  gcc `-Wall -Wextra -Werror` in a stub harness, and the full state
+  machine (request/release/duplicates/suspended/fw-upgrade/resume) was
+  executed and behaved correctly;
+- ✅ declaration order (handler before first use in probe) verified in
+  the patched source;
+- ❌ NOT compiled inside the actual kernel tree (needs the full
+  aarch64 Android build environment) — first real `m evolution` run
+  will confirm;
+- ❌ NOT tested on hardware — that's the on-device test plan below.
 
 ### 6.3 If logs show the Wacom IC never sends TSP_STOP packets on this unit
 

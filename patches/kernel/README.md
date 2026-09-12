@@ -6,12 +6,11 @@ branch **`lineage-22.1-gts7fewifi`** — the only public branch that contains
 `arch/arm64/configs/vendor/lineage-gts7fewifi_defconfig` (which
 `BoardConfig.mk` requires via `TARGET_KERNEL_CONFIG := vendor/lineage-gts7fewifi_defconfig`)
 and the full gts7fewifi driver set (`drivers/input/wacom/`, focaltech ft820x,
-himax hx831xx, pogo keyboard, battery, panel drivers). Both patches were
-verified to `git apply --check` cleanly against that branch's HEAD.
+himax hx831xx, pogo keyboard, battery, panel drivers). Both patches were verified to `git apply --check` cleanly against that branch's HEAD, and the added handler code was additionally compiled (gcc -Wall -Wextra -Werror, stub harness) and its state machine unit-executed. They have not yet been compiled inside the full kernel tree or tested on hardware.
 
 | Patch | What it does |
 |---|---|
-| `0001-…focaltech…` | Makes the FT8203 touchscreen driver consume Samsung's `sec_input` pen notifications: TSP scan is paused (`FTS_REG_POWER_MODE = SCAN_OFF`) while the S-Pen is in range and resumed when it leaves. This is the kernel-side fix for the palm/touch bugs. |
+| `0001-…focaltech…` | Makes the FT8203 touchscreen driver consume Samsung's `sec_input` pen notifications: TSP scan is paused (`FTS_REG_POWER_MODE = SCAN_OFF`) while the S-Pen is in range and resumed when it leaves. Block requests are skipped while suspended/fw-upgrading; resume force-releases a held block. This is the kernel-side fix for the palm/touch bugs. |
 | `0002-…wacom…` | Debug only: logs the result of the wacom driver's `NOTIFIER_TSP_BLOCKING_REQUEST/RELEASE` notifications in dmesg so you can see whether anyone consumed them. |
 
 ## Applying
