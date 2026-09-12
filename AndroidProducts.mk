@@ -12,6 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
 
 PRODUCT_MAKEFILES := \
+    $(LOCAL_DIR)/evolution_gts7fewifi.mk \
     $(LOCAL_DIR)/lineage_gts7fewifi.mk
+
+COMMON_LUNCH_CHOICES := \
+    evolution_gts7fewifi-userdebug \
+    lineage_gts7fewifi-userdebug
