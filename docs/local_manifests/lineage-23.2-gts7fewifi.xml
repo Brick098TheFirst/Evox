@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  local_manifests/gts7fewifi.xml — LineageOS 23.2 build for gts7fewifi
+  (Galaxy Tab S7 FE Wi-Fi, SM-T733)
+
+  Place in .repo/local_manifests/gts7fewifi.xml of a LineageOS 23.2
+  (lineage-23.2 branch) source tree, then:
+      repo sync -c -j8
+      source build/envsetup.sh
+      lunch lineage_gts7fewifi-userdebug
+      mka bacon
+
+  What this pins and why:
+   - device tree + vendor blobs: only published by Bush-cat
+     (LineageOS has no gts7fewifi repos).
+   - kernel: MUST be pinned to Bush-cat's lineage-22.1-gts7fewifi branch —
+     the only public branch containing the
+     vendor/lineage-gts7fewifi_defconfig required by BoardConfig.mk.
+     Roomservice would otherwise pull LineageOS/android_kernel_samsung_sm7325
+     (no gts7fewifi defconfig → build fails).
+   - device/samsung/sm7325-common, hardware/samsung, hardware/samsung_slsi/nfc
+     are resolved automatically via lineage.dependencies from LineageOS's
+     own repos — no need to pin them.
+
+  If you forked the repos (see docs/verified-source-map.md), replace the
+  remote/projects with your forks and matching branches.
+-->
+<manifest>
+  <remote name="bushcat"
+          fetch="https://github.com/Bush-cat"
+          revision="lineage-23.2" />
+
+  <!-- Kernel: the gts7fewifi branch, overriding whatever roomservice picked.
+       (If repo complains about a duplicate path, keep only this entry and
+       delete the kernel/samsung/sm7325 line roomservice added to
+       .repo/local_manifests/roomservice.xml.) -->
+  <project path="kernel/samsung/sm7325"
+           name="android_kernel_samsung_sm7325"
+           remote="bushcat"
+           revision="lineage-22.1-gts7fewifi" />
+
+  <!-- Device tree -->
+  <project path="device/samsung/gts7fewifi"
+           name="android_device_samsung_gts7fewifi"
+           remote="bushcat"
+           revision="lineage-23.2" />
+
+  <!-- Vendor blobs -->
+  <project path="vendor/samsung/gts7fewifi"
+           name="proprietary_vendor_samsung_gts7fewifi"
+           remote="bushcat"
+           revision="lineage-23.2-temp" />
+
+  <project path="vendor/samsung/sm7325-common"
+           name="proprietary_vendor_samsung_sm7325-common"
+           remote="bushcat"
+           revision="lineage-23.2" />
+</manifest>

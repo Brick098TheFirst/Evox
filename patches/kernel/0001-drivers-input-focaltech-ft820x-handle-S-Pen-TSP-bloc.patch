@@ -1,0 +1,144 @@
+From 8bfcb3bc92dc133ba32a0edc7b380016923488d4 Mon Sep 17 00:00:00 2001
+From: Brick098TheFirst <brick098thefirst@users.noreply.github.com>
+Date: Sat, 12 Sep 2026 16:03:45 +0000
+Subject: [PATCH 1/2] drivers: input: focaltech: ft820x: handle S-Pen TSP
+ blocking notifications
+
+The FT8203 (TDDI) touchscreen driver currently has no integration with
+Samsung's sec_input notifier framework, so the Wacom EMR digitizer
+driver's requests to suppress touch scanning while the S-Pen is in
+proximity (NOTIFIER_TSP_BLOCKING_REQUEST / NOTIFIER_TSP_BLOCKING_RELEASE,
+NOTIFIER_WACOM_PEN_HOVER_IN/OUT) are dropped on the floor.
+
+On the Tab S7 FE this shows up as:
+ - pen input degrading or dropping while the palm rests on the panel
+   (active capacitive scanning interferes with the EMR signal), and
+ - the touch controller latching into a dead state after pen contact,
+   recoverable only by reboot.
+
+Register a sec_input notifier and pause/resume touch scanning through
+the driver's existing fts_set_scan_off() helper (FTS_REG_POWER_MODE =
+SCAN_OFF 0x04 / active 0x00), the same primitive already used for cover
+mode. This mirrors what the sec_ts driver does on the Tab S7 (sm8250)
+and what stm_core.c does for the pogo touchpad.
+
+Hover in/out events are logged for now so the pen/touch interaction can
+be observed in dmesg before further behaviour is wired up.
+
+Signed-off-by: Brick098TheFirst <brick098thefirst@users.noreply.github.com>
+---
+ .../focaltech/ft820x/focaltech_core.c         | 61 +++++++++++++++++++
+ .../focaltech/ft820x/focaltech_core.h         |  4 ++
+ 2 files changed, 65 insertions(+)
+
+diff --git a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c
+index 75dd3e3..4441dbe 100644
+--- a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c
++++ b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.c
+@@ -1974,6 +1974,12 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
+ 		goto err_cmd_init;
+ 	}
+ 
++#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
++	ts_data->tsp_blocked = false;
++	sec_input_register_notify(&ts_data->sec_input_nb,
++			fts_sec_touch_notify_call, 1);
++#endif
++
+ #if IS_ENABLED(CONFIG_VBUS_NOTIFIER)
+ 	if (ts_data->pdata->enable_vbus_notifier)
+ 		vbus_notifier_register(&ts_data->vbus_nb, fts_vbus_notification,
+@@ -2049,6 +2055,10 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
+ 
+ 	fts_sec_cmd_exit(ts_data);
+ 
++#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
++	sec_input_unregister_notify(&ts_data->sec_input_nb);
++#endif
++
+ #if !IS_ENABLED(CONFIG_SAMSUNG_PRODUCT_SHIP)
+ 	fts_release_apk_debug_channel(ts_data);
+ 	fts_remove_sysfs(ts_data);
+@@ -2101,6 +2111,50 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
+ 	return 0;
+ }
+ 
++#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
++static int fts_sec_touch_notify_call(struct notifier_block *nb,
++		unsigned long data, void *v)
++{
++	struct fts_ts_data *ts_data =
++		container_of(nb, struct fts_ts_data, sec_input_nb);
++
++	switch (data) {
++	case NOTIFIER_TSP_BLOCKING_REQUEST:
++		if (ts_data->tsp_blocked) {
++			FTS_INFO("tsp block already requested, skip");
++			break;
++		}
++		if (ts_data->suspended) {
++			FTS_INFO("tsp block requested while suspended, skip");
++			break;
++		}
++		fts_set_scan_off(true);
++		ts_data->tsp_blocked = true;
++		FTS_INFO("S-Pen in range: TSP scan blocked");
++		break;
++	case NOTIFIER_TSP_BLOCKING_RELEASE:
++		if (!ts_data->tsp_blocked) {
++			FTS_INFO("tsp block not held, skip release");
++			break;
++		}
++		fts_set_scan_off(false);
++		ts_data->tsp_blocked = false;
++		FTS_INFO("S-Pen out of range: TSP scan released");
++		break;
++	case NOTIFIER_WACOM_PEN_HOVER_IN:
++		FTS_INFO("S-Pen hover in");
++		break;
++	case NOTIFIER_WACOM_PEN_HOVER_OUT:
++		FTS_INFO("S-Pen hover out");
++		break;
++	default:
++		break;
++	}
++
++	return 0;
++}
++#endif
++
+ int fts_ts_suspend(struct device *dev)
+ {
+ 	int ret = 0;
+@@ -2205,6 +2259,13 @@ static int fts_ts_resume(struct device *dev)
+ 	fts_wait_tp_to_valid();
+ 	fts_ex_mode_recovery(ts_data);
+ 
++#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
++	if (ts_data->tsp_blocked) {
++		FTS_INFO("clear stale TSP block state after resume");
++		ts_data->tsp_blocked = false;
++	}
++#endif
++
+ #if FTS_ESDCHECK_EN
+ 	fts_esdcheck_resume();
+ #endif
+diff --git a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h
+index 4706624..ffb3bd6 100644
+--- a/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h
++++ b/drivers/input/touchscreen/focaltech/ft820x/focaltech_core.h
+@@ -242,6 +242,10 @@ struct fts_ts_data {
+ 	bool power_disabled;
+ 	bool glove_mode;
+ 	bool cover_mode;
++#if IS_ENABLED(CONFIG_INPUT_SEC_NOTIFIER)
++	struct notifier_block sec_input_nb;
++	bool tsp_blocked;         /* TSP scan blocked while S-Pen (EMR) is in range */
++#endif
+ 	bool charger_mode;
+ 	bool gesture_mode;      /* gesture enable or disable, default: disable */
+ 	bool aot_enable;
+-- 
+2.39.5
+

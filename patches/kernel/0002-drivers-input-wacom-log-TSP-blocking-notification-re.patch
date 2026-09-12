@@ -1,0 +1,39 @@
+From 807e21a30903f60898b5843f12a1c67f5f5317ab Mon Sep 17 00:00:00 2001
+From: Brick098TheFirst <brick098thefirst@users.noreply.github.com>
+Date: Sat, 12 Sep 2026 16:03:45 +0000
+Subject: [PATCH 2/2] drivers: input: wacom: log TSP blocking notification
+ results
+
+Log the return value of the sec_input_notify() calls in
+wac_i2c_block_tsp_scan() so it is visible in dmesg whether any TSP
+driver actually consumed the block/release request (NOTIFY_DONE from an
+empty chain means nobody did).
+
+Signed-off-by: Brick098TheFirst <brick098thefirst@users.noreply.github.com>
+---
+ drivers/input/wacom/wacom_i2c.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/input/wacom/wacom_i2c.c b/drivers/input/wacom/wacom_i2c.c
+index 6aec5e0..890eb1b 100644
+--- a/drivers/input/wacom/wacom_i2c.c
++++ b/drivers/input/wacom/wacom_i2c.c
+@@ -1006,11 +1006,15 @@ static void wac_i2c_block_tsp_scan(struct wacom_i2c *wac_i2c, char *data)
+ 		wac_i2c->is_tsp_block = true;
+ 		wac_i2c->tsp_scan_mode = sec_input_notify(&wac_i2c->nb, NOTIFIER_TSP_BLOCKING_REQUEST, NULL);
+ 		wac_i2c->tsp_block_cnt++;
++		input_info(true, &wac_i2c->client->dev, "%s: TSP BLOCK REQUEST notified (ret=%d)\n",
++				__func__, wac_i2c->tsp_scan_mode);
+ 	} else if (!tsp && wac_i2c->is_tsp_block) {
+ 		input_info(true, &wac_i2c->client->dev, "%s: tsp:%d wacom mode:%d scan mode:%d\n",
+ 				__func__, tsp, wacom_mode, scan_mode);
+ 		wac_i2c->tsp_scan_mode = sec_input_notify(&wac_i2c->nb, NOTIFIER_TSP_BLOCKING_RELEASE, NULL);
+ 		wac_i2c->is_tsp_block = false;
++		input_info(true, &wac_i2c->client->dev, "%s: TSP BLOCK RELEASE notified (ret=%d)\n",
++				__func__, wac_i2c->tsp_scan_mode);
+ 	}
+ #endif
+ }
+-- 
+2.39.5
+
